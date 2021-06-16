@@ -1,0 +1,1 @@
+C:/Users/morit/Documents/GitHub/Easy-UAC/Easy-UAC.ps1
