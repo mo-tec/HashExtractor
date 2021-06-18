@@ -1,9 +1,6 @@
 [submodule "B64-Util"]
 	path = B64-Util
 	url = https://github.com/PwshLab/B64-Util
-[submodule "Easy-UAC"]
-	path = Easy-UAC
-	url = https://github.com/PwshLab/Easy-UAC
 [submodule "nishang"]
 	path = nishang
 	url = https://github.com/samratashok/nishang
