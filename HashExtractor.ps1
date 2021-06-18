@@ -1,5 +1,5 @@
 function Get-Resources {
-	return (Test-Path ".\B64-Util\B64-Util.ps1" -and (Test-Path ".\nishang\Gather\Get-PassHashes.ps1") -and (Test-Path ".\Easy-UAC\Easy-UAC.ps1"))
+	return ((Test-Path ".\B64-Util\B64-Util.ps1") -and (Test-Path ".\nishang\Gather\Get-PassHashes.ps1") -and (Test-Path ".\Easy-UAC\Easy-UAC.ps1"))
 }
 
 function New-Payloads {
@@ -15,7 +15,7 @@ function New-Payloads {
 		$ServerPort
 	)
     
-	if (!Get-Resources)
+	if (!(Get-Resources))
 	{
 		Write-Error -Message "One or multiple dependencies are missing. Execute in source directory."
 		return;
@@ -159,7 +159,7 @@ function Start-HashAcquisition {
 
 	if (!$Payloads)
 	{
-		Write-Error -Message "Payload creatin failed."
+		Write-Error -Message "Payload creation failed."
 		return;
 	}
 
